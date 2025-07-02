@@ -1,56 +1,79 @@
 import streamlit as st
-from openai import OpenAI
+import openai
 
-# Show title and description.
-st.title("💬 Chatbot")
-st.write(
-    "This is a simple chatbot that uses OpenAI's GPT-3.5 model to generate responses. "
-    "To use this app, you need to provide an OpenAI API key, which you can get [here](https://platform.openai.com/account/api-keys). "
-    "You can also learn how to build this app step by step by [following our tutorial](https://docs.streamlit.io/develop/tutorials/llms/build-conversational-apps)."
-)
+# 🔑 OpenAI API 키 입력
+openai.api_key = "YOUR_OPENAI_API_KEY"  # ← 여기에 본인 키 입력
 
-# Ask user for their OpenAI API key via `st.text_input`.
-# Alternatively, you can store the API key in `./.streamlit/secrets.toml` and access it
-# via `st.secrets`, see https://docs.streamlit.io/develop/concepts/connections/secrets-management
-openai_api_key = st.text_input("OpenAI API Key", type="password")
-if not openai_api_key:
-    st.info("Please add your OpenAI API key to continue.", icon="🗝️")
-else:
+st.set_page_config(page_title="LifeCast – 연애 4컷 시나리오 생성기", layout="wide")
+st.title("🎞️ LifeCast – 자유서술 + 이미지/영상 기반 4컷 만화 생성기")
 
-    # Create an OpenAI client.
-    client = OpenAI(api_key=openai_api_key)
+st.markdown("""
+당신의 연애 이야기를 텍스트, 이미지, 영상, 음성으로 남겨주세요.  
+AI가 이를 바탕으로 **4컷 만화 시놉시스**를 생성해드립니다.
+""")
 
-    # Create a session state variable to store the chat messages. This ensures that the
-    # messages persist across reruns.
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+# 사용자 입력
+with st.expander("📝 연애 이야기 자유서술", expanded=True):
+    story_text = st.text_area("당신의 연애 이야기를 자유롭게 입력해주세요 (200자 이상)", height=300)
 
-    # Display the existing chat messages via `st.chat_message`.
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+# 멀티미디어 입력
+with st.expander("🖼️ 미디어 업로드"):
+    uploaded_images = st.file_uploader("📸 이미지 업로드 (선택, 여러 장 가능)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    uploaded_videos = st.file_uploader("🎥 영상 업로드 (선택)", type=["mp4", "mov", "avi"], accept_multiple_files=True)
+    uploaded_audio = st.file_uploader("🎙️ 음성 업로드 (선택)", type=["mp3", "wav"], accept_multiple_files=True)
 
-    # Create a chat input field to allow the user to enter a message. This will display
-    # automatically at the bottom of the page.
-    if prompt := st.chat_input("What is up?"):
+# 버튼 클릭 시 시놉시스 생성
+if st.button("✅ 4컷 시나리오 생성"):
+    if not story_text or len(story_text.strip()) < 100:
+        st.warning("조금 더 자세히 입력해 주세요. (최소 100자 이상 권장)")
+    else:
+        with st.spinner("AI가 4컷으로 정리 중입니다..."):
 
-        # Store and display the current prompt.
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+            # GPT 프롬프트 구성
+            prompt = f"""
+다음은 사용자가 작성한 연애 이야기입니다.  
+이 이야기를 바탕으로 다음 형식으로 4컷 만화 시나리오를 작성해 주세요:
 
-        # Generate a response using the OpenAI API.
-        stream = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.messages
-            ],
-            stream=True,
-        )
+형식:
+1컷: [인연의 시작] - 장면 설명 (200자 내외)
+2컷: [가까워진 계기] - 장면 설명
+3컷: [갈등 혹은 전환점] - 장면 설명
+4컷: [결말 또는 회고] - 장면 설명 + 감정
 
-        # Stream the response to the chat using `st.write_stream`, then store it in 
-        # session state.
-        with st.chat_message("assistant"):
-            response = st.write_stream(stream)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+연애 이야기:
+\"\"\"{story_text}\"\"\"
+
+4컷 시놉시스:
+"""
+
+            # GPT 호출
+            response = openai.ChatCompletion.create(
+                model="gpt-4-1106-preview",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=800
+            )
+
+            result = response['choices'][0]['message']['content']
+            st.success("✅ 시놉시스 생성 완료!")
+            st.markdown(result)
+
+            st.divider()
+
+            # 미디어 출력
+            st.subheader("🖼️ 함께 업로드한 미디어")
+
+            if uploaded_images:
+                st.markdown("**📸 이미지**")
+                for img in uploaded_images:
+                    st.image(img, use_column_width=True)
+
+            if uploaded_videos:
+                st.markdown("**🎥 영상**")
+                for vid in uploaded_videos:
+                    st.video(vid)
+
+            if uploaded_audio:
+                st.markdown("**🎙️ 음성**")
+                for aud in uploaded_audio:
+                    st.audio(aud)
